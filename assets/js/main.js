@@ -64,4 +64,73 @@
       });
     });
   });
+
+  // Formulaire candidature (Google Apps Script) — envoi avec pièce jointe
+  var TAILLE_MAX_CV = 10 * 1024 * 1024; // 10 Mo
+  var gforms = document.querySelectorAll('form[data-gscript]');
+  Array.prototype.forEach.call(gforms, function (form) {
+    var status = form.querySelector('.form-status');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      var fileInput = form.querySelector('input[type="file"]');
+      var file = fileInput && fileInput.files.length ? fileInput.files[0] : null;
+
+      if (file && file.size > TAILLE_MAX_CV) {
+        status.className = 'form-status err';
+        status.textContent = 'Le fichier dépasse 10 Mo. Choisissez un fichier plus léger.';
+        return;
+      }
+
+      status.className = 'form-status';
+      status.textContent = 'Envoi en cours…';
+      if (btn) btn.disabled = true;
+
+      var payload = {};
+      var fd = new FormData(form);
+      fd.forEach(function (value, key) {
+        if (typeof value === 'string') payload[key] = value;
+      });
+
+      var envoyer = function () {
+        fetch(form.getAttribute('action'), {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }).then(function (res) {
+          return res.json();
+        }).then(function (json) {
+          if (json && json.ok) {
+            form.reset();
+            status.className = 'form-status ok';
+            status.textContent = form.getAttribute('data-success') || 'Message envoyé. Merci !';
+          } else {
+            throw new Error((json && json.error) || 'bad status');
+          }
+        }).catch(function () {
+          status.className = 'form-status err';
+          status.textContent = 'L\u2019envoi a échoué. Réessayez dans un instant.';
+        }).then(function () {
+          if (btn) btn.disabled = false;
+        });
+      };
+
+      if (file) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          payload.filename = file.name;
+          payload.mimeType = file.type || 'application/octet-stream';
+          payload.data = String(reader.result).split(',')[1]; // base64 sans le préfixe data:
+          envoyer();
+        };
+        reader.onerror = function () {
+          status.className = 'form-status err';
+          status.textContent = 'Impossible de lire le fichier. Réessayez.';
+          if (btn) btn.disabled = false;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        envoyer();
+      }
+    });
+  });
 })();
